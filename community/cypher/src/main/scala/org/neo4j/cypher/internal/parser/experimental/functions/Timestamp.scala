@@ -20,21 +20,16 @@
 package org.neo4j.cypher.internal.parser.experimental.functions
 
 import org.neo4j.cypher.internal.parser.experimental._
-import org.neo4j.cypher.internal.symbols._
 import org.neo4j.cypher.internal.commands.{expressions => commandexpressions}
+import org.neo4j.cypher.internal.symbols.LongType
 
-case object Right extends Function {
-  def name = "RIGHT"
+case object Timestamp extends Function {
+  def name = "TIMESTAMP"
 
   def semanticCheck(ctx: ast.Expression.SemanticContext, invocation: ast.FunctionInvocation) : SemanticCheck = {
-    checkArgsThen(invocation, 2) {
-      invocation.arguments(0).limitType(StringType()) >>=
-      invocation.arguments(1).limitType(LongType())
-    } >>= invocation.limitType(StringType())
+    checkArgs(invocation, 0) >>=
+    invocation.limitType(LongType())
   }
 
-  def toCommand(invocation: ast.FunctionInvocation) = {
-    val commands = invocation.arguments.map(_.toCommand)
-    commandexpressions.RightFunction(commands(0), commands(1))
-  }
+  def toCommand(invocation: ast.FunctionInvocation) = commandexpressions.TimestampFunction()
 }

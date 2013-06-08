@@ -22,8 +22,10 @@ package org.neo4j.cypher.internal.parser.experimental.ast
 import org.neo4j.cypher.internal.parser.experimental._
 import org.neo4j.cypher.internal.commands
 import org.neo4j.cypher.internal.mutation
+import org.neo4j.cypher.internal.parser.{Action, On, OnAction}
+import org.neo4j.cypher.internal.commands.MergeAst
 
-trait Clause extends AstNode with SemanticCheckable
+sealed trait Clause extends AstNode with SemanticCheckable
 
 case class Start(items: Seq[StartItem], token: InputToken) extends Clause {
   def semanticCheck = items.semanticCheck
@@ -45,15 +47,15 @@ trait UpdateClause extends Clause {
 case class Create(patterns: Seq[Pattern], token: InputToken) extends UpdateClause {
   def semanticCheck = patterns.semanticCheck(Pattern.SemanticContext.Create)
 
-  def toLegacyStartItems : Seq[commands.UpdatingStartItem] = toLegacyUpdateActions.map(_ match {
+  def toLegacyStartItems : Seq[commands.UpdatingStartItem] = toLegacyUpdateActions.map {
     case createNode: mutation.CreateNode => commands.CreateNodeStartItem(createNode)
     case createRelationship: mutation.CreateRelationship => commands.CreateRelationshipStartItem(createRelationship)
-  })
+  }
   def toLegacyUpdateActions = patterns.flatMap(_.toLegacyCreates)
-  def toLegacyNamedPaths = patterns.flatMap(_ match {
+  def toLegacyNamedPaths = patterns.flatMap {
     case n : NamedPattern => Some(commands.NamedPath(n.identifier.name, n.toLegacyPatterns:_*))
     case _ => None
-  })
+  }
 }
 
 
@@ -75,4 +77,28 @@ case class Remove(items: Seq[RemoveItem], token: InputToken) extends UpdateClaus
   def semanticCheck = items.semanticCheck
 
   def toLegacyUpdateActions = items.map(_.toLegacyUpdateAction)
+}
+
+
+case class Merge(patterns: Seq[Pattern], actions: Seq[MergeAction], token: InputToken) extends Clause {
+  def children = patterns ++ actions
+  def semanticCheck = ??? // pattern.semanticCheck(Pattern.SemanticContext.Merge)
+
+  def toCommand: MergeAst = MergeAst(patterns.flatMap(_.toAbstractPatterns), actions.map(_.toAction))
+}
+
+abstract class MergeAction(identifier: Identifier, action: SetClause, token: InputToken) extends AstNode {
+  def children = Seq(identifier, action)
+  def verb: Action
+  def toAction = OnAction(verb, identifier.name, action.toLegacyUpdateActions)
+}
+
+case class OnCreate(identifier: Identifier, action: SetClause, token: InputToken)
+  extends MergeAction(identifier, action, token) {
+  def verb: Action = On.Create
+}
+
+case class OnMatch(identifier: Identifier, action: SetClause, token: InputToken)
+  extends MergeAction(identifier, action, token) {
+  def verb: Action = On.Match
 }
