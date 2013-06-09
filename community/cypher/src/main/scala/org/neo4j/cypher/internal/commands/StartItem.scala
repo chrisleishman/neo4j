@@ -43,7 +43,6 @@ import scala.collection.mutable
 abstract class StartItem(val identifierName: String, val args: Map[String, String])
   extends TypeSafe with AstNode[StartItem] {
   def mutating: Boolean
-  override def addsToRow() = Seq(identifierName)
   def name: String = getClass.getSimpleName
 }
 
@@ -123,7 +122,7 @@ case class MergeNodeStartItem(inner: MergeNodeAction) extends UpdatingStartItem(
 case class MergeAst(patterns: Seq[AbstractPattern], onActions: Seq[OnAction]) extends UpdatingStartItem(PlaceHolder, "") {
   override def rewrite(f: (Expression) => Expression) = MergeAst(patterns.map(_.rewrite(f)), onActions)
 
-  def nextStep(): Seq[MergeNodeStartItem] = {
+  def nextStep(): Seq[MergeNodeAction] = {
     val actionsMap = new mutable.HashMap[(String, Action), mutable.Set[UpdateAction]] with mutable.MultiMap[(String, Action), UpdateAction]
 
     for (
@@ -150,7 +149,7 @@ case class MergeAst(patterns: Seq[AbstractPattern], onActions: Seq[OnAction]) ex
 
         val onCreate: Seq[UpdateAction] = labelActions ++ propertyActions ++ actionsFromOnCreateClause
 
-        MergeNodeStartItem(MergeNodeAction(name, predicates, onCreate, actionsFromOnMatchClause.toSeq, None))
+        MergeNodeAction(name, predicates, onCreate, actionsFromOnMatchClause.toSeq, None)
 
       case _                                            =>
         throw new PatternException("MERGE only supports single node patterns")
