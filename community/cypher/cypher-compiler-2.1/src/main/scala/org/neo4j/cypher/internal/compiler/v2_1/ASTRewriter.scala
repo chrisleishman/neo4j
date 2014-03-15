@@ -29,15 +29,15 @@ class ASTRewriter(rewritingMonitor: AstRewritingMonitor) {
 
     val (extractParameters: Rewriter, extractedParameters: Map[String, Any]) = literalReplacement(statement)
 
-    val rewriter: Rewriter = bottomUp(inSequence(
+    val rewriter: FoldingRewriter[Option[Any]] = bottomUp(noFolding(inSequence(
       foldConstants,
       extractParameters,
       nameMatchPatternElements,
       normalizeMatchPredicates,
       normalizeEqualsArgumentOrder
-    ))
+    )))
 
-    val rewrittenStatement = statement.rewrite(rewriter).asInstanceOf[ast.Statement]
+    val (rewrittenStatement, _) = statement.refold(None: Option[Any])(rewriter).asInstanceOf[(ast.Statement, _)]
     rewritingMonitor.finishRewriting(queryText, rewrittenStatement)
     (rewrittenStatement, extractedParameters)
   }

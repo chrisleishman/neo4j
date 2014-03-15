@@ -119,6 +119,13 @@ object inSequence {
   def apply[R](rewriters: FoldingRewriter[R]*) = new InSequenceFoldingRewriter[R](rewriters)
 }
 
+object noFolding {
+  def apply[R](rewriter: Rewriter): FoldingRewriter[R] = new FoldingRewriter[R] {
+    def apply(that: AnyRef): Option[R => (AnyRef, R)] =
+      rewriter.apply(that).map(result => s => (result, s))
+  }
+}
+
 object topDown {
   import Foldable._
   import Rewritable._
