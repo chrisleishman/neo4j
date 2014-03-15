@@ -48,7 +48,7 @@ object RewritableTest {
 class RewritableTest extends CypherFunSuite {
   import RewritableTest._
 
-  test("topDown should be identical when no rule matches") {
+  test("topDown rewrite should be identical when no rule matches") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -58,7 +58,18 @@ class RewritableTest extends CypherFunSuite {
     assert(result === ast)
   }
 
-  test("topDown should be identical when using identity") {
+  test("topDown refold should be identical when no rule matches") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(33)(topDown(FoldingRewriter.lift {
+      case None => ???
+    }))
+
+    assert(result === ast)
+    assert(acc === 33)
+  }
+
+  test("topDown rewrite should be identical when using identity") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -68,7 +79,18 @@ class RewritableTest extends CypherFunSuite {
     assert(result === ast)
   }
 
-  test("topDown should match and replace primitives") {
+  test("topDown refold should be identical when using identity") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(33)(topDown(FoldingRewriter.lift {
+      case a => acc => (a, acc)
+    }))
+
+    assert(result === ast)
+    assert(acc === 33)
+  }
+
+  test("topDown rewrite should match and replace primitives") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -78,7 +100,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(99), Add(Val(99), Val(99))))
   }
 
-  test("topDown should match and replace trees") {
+  test("topDown refold should match and replace primitives") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(7)(topDown(FoldingRewriter.lift {
+      case i: java.lang.Integer => acc =>
+        (99: java.lang.Integer, acc + i)
+    }))
+
+    assert(result === Add(Val(99), Add(Val(99), Val(99))))
+    assert(acc === 13)
+  }
+
+  test("topDown rewrite should match and replace trees") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -89,7 +123,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(1), Val(5)))
   }
 
-  test("topDown should match and replace primitives and trees") {
+  test("topDown refold should match and replace trees") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(9)(topDown(FoldingRewriter.lift {
+      case Add(Val(x), Val(y)) => acc =>
+        (Val(x + y), acc + x + y)
+    }))
+
+    assert(result === Add(Val(1), Val(5)))
+    assert(acc === 14)
+  }
+
+  test("topDown rewrite should match and replace primitives and trees") {
     val ast = Add(Val(8), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -102,7 +148,21 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(1), Val(5)))
   }
 
-  test("topDown should duplicate terms with pair parameters") {
+  test("topDown refold should match and replace primitives and trees") {
+    val ast = Add(Val(8), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(101)(topDown(FoldingRewriter.lift {
+      case Val(_) => acc =>
+        (Val(1), acc + 1)
+      case Add(Val(x), Val(y)) => acc =>
+        (Val(x + y), acc + 100)
+    }))
+
+    assert(result === Add(Val(1), Val(5)))
+    assert(acc === 202)
+  }
+
+  test("topDown rewrite should duplicate terms with pair parameters") {
     val ast = Add(Val(1), Pos((Val(2), Val(3))))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -112,7 +172,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(99), Pos((Val(99), Val(99)))))
   }
 
-  test("topDown should duplicate terms with sequence of pairs") {
+  test("topDown refold should duplicate terms with pair parameters") {
+    val ast = Add(Val(1), Pos((Val(2), Val(3))))
+
+    val (result, acc) = ast.refold(0)(topDown(FoldingRewriter.lift {
+      case Val(_) => acc =>
+        (Val(99), acc + 1)
+    }))
+
+    assert(result === Add(Val(99), Pos((Val(99), Val(99)))))
+    assert(acc === 3)
+  }
+
+  test("topDown rewrite should duplicate terms with sequence of pairs") {
     val ast = Add(Val(1), Options(Seq((Val(2), Val(3)), (Val(4), Val(5)))))
 
     val result = ast.rewrite(topDown(Rewriter.lift {
@@ -122,7 +194,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(99), Options(Seq((Val(99), Val(99)), (Val(99), Val(99))))))
   }
 
-  test("bottomUp should be identical when no rule matches") {
+  test("topDown refold should duplicate terms with sequence of pairs") {
+    val ast = Add(Val(1), Options(Seq((Val(2), Val(3)), (Val(4), Val(5)))))
+
+    val (result, acc) = ast.refold(0)(topDown(FoldingRewriter.lift {
+      case Val(_) => acc =>
+        (Val(99), acc + 1)
+    }))
+
+    assert(result === Add(Val(99), Options(Seq((Val(99), Val(99)), (Val(99), Val(99))))))
+    assert(acc === 5)
+  }
+
+  test("bottomUp rewrite should be identical when no rule matches") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -132,7 +216,18 @@ class RewritableTest extends CypherFunSuite {
     assert(result === ast)
   }
 
-  test("bottomUp should be identical when using identity") {
+  test("bottomUp refold should be identical when no rule matches") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(33)(bottomUp(FoldingRewriter.lift {
+      case None => ???
+    }))
+
+    assert(result === ast)
+    assert(acc == 33)
+  }
+
+  test("bottomUp rewrite should be identical when using identity") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -142,7 +237,18 @@ class RewritableTest extends CypherFunSuite {
     assert(result === ast)
   }
 
-  test("bottomUp should match and replace primitives") {
+  test("bottomUp refold should be identical when using identity") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(33)(bottomUp(FoldingRewriter.lift {
+      case a => acc => (a, acc)
+    }))
+
+    assert(result === ast)
+    assert(acc === 33)
+  }
+
+  test("bottomUp rewrite should match and replace primitives") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -152,7 +258,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(99), Add(Val(99), Val(99))))
   }
 
-  test("bottomUp should match and replace trees") {
+  test("bottomUp refold should match and replace primitives") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(7)(bottomUp(FoldingRewriter.lift {
+      case i: java.lang.Integer => acc =>
+        (99: java.lang.Integer, acc + i)
+    }))
+
+    assert(result === Add(Val(99), Add(Val(99), Val(99))))
+    assert(acc === 13)
+  }
+
+  test("bottomUp rewrite should match and replace trees") {
     val ast = Add(Val(1), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -163,7 +281,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Val(6))
   }
 
-  test("bottomUp should match and replace primitives and trees") {
+  test("bottomUp refold should match and replace trees") {
+    val ast = Add(Val(1), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(9)(bottomUp(FoldingRewriter.lift {
+      case Add(Val(x), Val(y)) => acc =>
+        (Val(x + y), acc + x + y)
+    }))
+
+    assert(result === Val(6))
+    assert(acc === 20)
+  }
+
+  test("bottomUp rewrite should match and replace primitives and trees") {
     val ast = Add(Val(8), Add(Val(2), Val(3)))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -176,7 +306,21 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Val(3))
   }
 
-  test("bottomUp should duplicate terms with pair parameters") {
+  test("bottomUp refold should match and replace primitives and trees") {
+    val ast = Add(Val(8), Add(Val(2), Val(3)))
+
+    val (result, acc) = ast.refold(101)(bottomUp(FoldingRewriter.lift {
+      case Val(_) => acc =>
+        (Val(1), acc + 1)
+      case Add(Val(x), Val(y)) => acc =>
+        (Val(x + y), acc + 100)
+    }))
+
+    assert(result === Val(3))
+    assert(acc === 304)
+  }
+
+  test("bottomUp rewrite should duplicate terms with pair parameters") {
     val ast = Add(Val(1), Pos((Val(2), Val(3))))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -186,7 +330,19 @@ class RewritableTest extends CypherFunSuite {
     assert(result === Add(Val(99), Pos((Val(99), Val(99)))))
   }
 
-  test("bottomUp should duplicate terms with sequence of pairs") {
+  test("bottomUp refold should duplicate terms with pair parameters") {
+    val ast = Add(Val(1), Pos((Val(2), Val(3))))
+
+    val (result, acc) = ast.refold(0)(bottomUp(FoldingRewriter.lift {
+      case Val(_) => acc =>
+        (Val(99), acc + 1)
+    }))
+
+    assert(result === Add(Val(99), Pos((Val(99), Val(99)))))
+    assert(acc === 3)
+  }
+
+  test("bottomUp rewrite should duplicate terms with sequence of pairs") {
     val ast = Add(Val(1), Options(Seq((Val(2), Val(3)), (Val(4), Val(5)))))
 
     val result = ast.rewrite(bottomUp(Rewriter.lift {
@@ -194,5 +350,17 @@ class RewritableTest extends CypherFunSuite {
     }))
 
     assert(result === Add(Val(99), Options(Seq((Val(99), Val(99)), (Val(99), Val(99))))))
+  }
+
+  test("bottomUp refold should duplicate terms with sequence of pairs") {
+    val ast = Add(Val(1), Options(Seq((Val(2), Val(3)), (Val(4), Val(5)))))
+
+    val (result, acc) = ast.refold(0)(bottomUp(FoldingRewriter.lift {
+      case Val(_) => acc =>
+        (Val(99), acc + 1)
+    }))
+
+    assert(result === Add(Val(99), Options(Seq((Val(99), Val(99)), (Val(99), Val(99))))))
+    assert(acc === 5)
   }
 }

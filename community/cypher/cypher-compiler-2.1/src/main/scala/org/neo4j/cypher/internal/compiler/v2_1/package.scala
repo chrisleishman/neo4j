@@ -27,6 +27,7 @@ package object v2_1 {
   type TypeGenerator = SemanticState => TypeSpec
 
   type Rewriter = (AnyRef => Option[AnyRef])
+  type FoldingRewriter[R] = (AnyRef => Option[R => (AnyRef, R)])
 
   // Allows joining of two (SemanticState => SemanticCheckResult) funcs together (using then)
   implicit def chainableSemanticCheck(check: SemanticCheck) = new ChainableSemanticCheck(check)

@@ -28,6 +28,9 @@ object Rewriter {
   def noop = Rewriter.lift(Map.empty)
 }
 
+object FoldingRewriter {
+  def lift[R](f: PartialFunction[AnyRef, R => (AnyRef, R)]): FoldingRewriter[R] = f.lift
+}
 
 object Rewritable {
   implicit class IteratorEq[A <: AnyRef](val iterator: Iterator[A]) {
@@ -84,6 +87,7 @@ object Rewritable {
   }
 
   implicit class RewritableAny(val that: AnyRef) extends AnyVal {
+    def refold[R](acc: R)(rewriter: FoldingRewriter[R]): (AnyRef, R) = rewriter.apply(that).fold((that, acc))(_(acc))
     def rewrite(rewriter: Rewriter): AnyRef = rewriter.apply(that).getOrElse(that)
   }
 }
@@ -103,6 +107,16 @@ object inSequence {
   }
 
   def apply(rewriters: Rewriter*) = new InSequenceRewriter(rewriters)
+
+  class InSequenceFoldingRewriter[R](rewriters: Seq[FoldingRewriter[R]]) extends FoldingRewriter[R] {
+    def apply(that: AnyRef): Some[R => (AnyRef, R)] = Some(acc =>
+      rewriters.foldLeft((that, acc)) {
+        case ((t, a), r) => t.refold(a)(r)
+      }
+    )
+  }
+
+  def apply[R](rewriters: FoldingRewriter[R]*) = new InSequenceFoldingRewriter[R](rewriters)
 }
 
 object topDown {
@@ -117,6 +131,20 @@ object topDown {
   }
 
   def apply(rewriter: Rewriter) = new TopDownRewriter(rewriter)
+
+  class TopDownFoldingRewriter[R](rewriter: FoldingRewriter[R]) extends FoldingRewriter[R] {
+    def apply(that: AnyRef): Some[R => (AnyRef, R)] = Some(acc => {
+      val (rewrittenThat, acc1) = that.refold(acc)(rewriter)
+      val (rewrittenChildren, acc2) = rewrittenThat.children.foldLeft((Vector.empty: Vector[AnyRef], acc1)) {
+        case ((rewrittenChildren, a), c) =>
+          val (rewrittenChild, aa) = this.apply(c).get(a)
+          (rewrittenChildren :+ rewrittenChild, aa)
+      }
+      (rewrittenThat.dup(rewrittenChildren), acc2)
+    })
+  }
+
+  def apply[R](rewriter: FoldingRewriter[R]) = new TopDownFoldingRewriter[R](rewriter)
 }
 
 object bottomUp {
@@ -131,4 +159,18 @@ object bottomUp {
   }
 
   def apply(rewriter: Rewriter) = new BottomUpRewriter(rewriter)
+
+  class BottomUpFoldingRewriter[R](rewriter: FoldingRewriter[R]) extends FoldingRewriter[R] {
+    def apply(that: AnyRef): Some[R => (AnyRef, R)] = Some(acc => {
+      val (rewrittenChildren, acc1) = that.children.foldLeft((Vector.empty: Vector[AnyRef], acc)) {
+        case ((rewrittenChildren, a), c) =>
+          val (rewrittenChild, aa) = this.apply(c).get(a)
+          (rewrittenChildren :+ rewrittenChild, aa)
+      }
+      val rewrittenThat = that.dup(rewrittenChildren)
+      rewrittenThat.refold(acc1)(rewriter)
+    })
+  }
+
+  def apply[R](rewriter: FoldingRewriter[R]) = new BottomUpFoldingRewriter[R](rewriter)
 }
