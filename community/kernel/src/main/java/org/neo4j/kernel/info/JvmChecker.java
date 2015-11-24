@@ -28,16 +28,14 @@ public class JvmChecker
     public static final String INCOMPATIBLE_JVM_VERSION_WARNING = "You are using an unsupported version of " +
             "the Java runtime. Please use Oracle(R) Java(TM) Runtime Environment 7 or 8 or OpenJDK(TM) 7 or 8.";
 
-    private final Log log;
     private final JvmMetadataRepository jvmMetadataRepository;
 
-    public JvmChecker( Log log, JvmMetadataRepository jvmMetadataRepository )
+    public JvmChecker( JvmMetadataRepository jvmMetadataRepository )
     {
-        this.log = log;
         this.jvmMetadataRepository = jvmMetadataRepository;
     }
 
-    public void checkJvmCompatibilityAndIssueWarning()
+    public void checkJvmCompatibilityAndIssueWarning( Log log )
     {
         String javaVmName = jvmMetadataRepository.getJavaVmName();
         String javaVersion = jvmMetadataRepository.getJavaVersion();

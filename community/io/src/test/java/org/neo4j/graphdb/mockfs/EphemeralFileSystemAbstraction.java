@@ -212,6 +212,10 @@ public class EphemeralFileSystemAbstraction implements FileSystemAbstraction
     @Override
     public synchronized StoreChannel open( File fileName, String mode ) throws IOException
     {
+        if ( directories.contains( fileName.getAbsoluteFile() ) )
+        {
+            throw new FileNotFoundException( fileName + " (Is a directory)" );
+        }
         EphemeralFileData data = files.get( fileName );
         if ( data != null )
         {
@@ -251,8 +255,7 @@ public class EphemeralFileSystemAbstraction implements FileSystemAbstraction
         File parentFile = fileName.getParentFile();
         if ( parentFile != null /*means that this is the 'default location'*/ && !fileExists( parentFile ) )
         {
-            throw new FileNotFoundException( "'" + fileName
-                                             + "' (The system cannot find the path specified)" );
+            throw new FileNotFoundException( fileName + " (No such file or directory)" );
         }
 
         EphemeralFileData data = new EphemeralFileData();

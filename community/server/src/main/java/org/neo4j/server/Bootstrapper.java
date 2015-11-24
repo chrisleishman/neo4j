@@ -58,7 +58,7 @@ public abstract class Bootstrapper
     protected NeoServer server;
     protected Config config;
     private Thread shutdownHook;
-    protected GraphDatabaseDependencies dependencies = GraphDatabaseDependencies.newDependencies();
+    private GraphDatabaseDependencies dependencies = GraphDatabaseDependencies.newDependencies();
 
     private Log log;
     private String serverPort;
@@ -72,7 +72,7 @@ public abstract class Bootstrapper
 
     public int start( File configFile, Pair<String, String> ... configOverrides )
     {
-        LogProvider userLogProvider = FormattedLogProvider.withoutRenderingContext().toOutputStream( System.out );
+        LogProvider userLogProvider;
 
         JULBridge.resetJUL();
         Logger.getLogger( "" ).setLevel( Level.WARNING );
@@ -89,16 +89,16 @@ public abstract class Bootstrapper
             serverPort = String.valueOf( config.get( ServerSettings.webserver_port ) );
             dependencies = dependencies.userLogProvider( userLogProvider );
 
-            life.start();
-
-            checkCompatibility();
+            new JvmChecker( new JvmMetadataRepository() ).checkJvmCompatibilityAndIssueWarning( log );
 
             server = createNeoServer( config, dependencies, userLogProvider );
             server.start();
 
             addShutdownHook();
 
-            return OK;
+        try
+        {
+            server.start();
         }
         catch ( ServerStartupException e )
         {
@@ -117,11 +117,10 @@ public abstract class Bootstrapper
             log.error( format( "Failed to start Neo Server on port [%s]", serverPort ), e );
             return WEB_SERVER_STARTUP_ERROR_CODE;
         }
-    }
 
-    private void checkCompatibility()
-    {
-        new JvmChecker( log, new JvmMetadataRepository() ).checkJvmCompatibilityAndIssueWarning();
+        addShutdownHook();
+
+        return OK;
     }
 
     protected abstract NeoServer createNeoServer( Config config, GraphDatabaseDependencies dependencies,

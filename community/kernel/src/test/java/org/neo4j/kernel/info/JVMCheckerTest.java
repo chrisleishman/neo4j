@@ -37,8 +37,8 @@ public class JVMCheckerTest
     {
         BufferingLog bufferingLogger = new BufferingLog();
 
-        new JvmChecker( bufferingLogger, new CannedJvmMetadataRepository( "Java HotSpot(TM) 64-Bit Server VM",
-                "1.7.0-b147" ) ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new CannedJvmMetadataRepository( "Java HotSpot(TM) 64-Bit Server VM",
+                "1.7.0-b147" ) ).checkJvmCompatibilityAndIssueWarning( bufferingLogger );
 
         assertTrue( bufferingLogger.toString().isEmpty() );
     }
@@ -59,8 +59,8 @@ public class JVMCheckerTest
     {
         BufferingLog bufferingLogger = new BufferingLog();
 
-        new JvmChecker( bufferingLogger, new CannedJvmMetadataRepository( "Java HotSpot(TM) Server VM",
-                "1.7.0_25-b15" ) ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new CannedJvmMetadataRepository( "Java HotSpot(TM) Server VM",
+                "1.7.0_25-b15" ) ).checkJvmCompatibilityAndIssueWarning( bufferingLogger );
 
         assertTrue( bufferingLogger.toString().isEmpty() );
     }
@@ -70,8 +70,8 @@ public class JVMCheckerTest
     {
         BufferingLog bufferingLogger = new BufferingLog();
 
-        new JvmChecker( bufferingLogger, new CannedJvmMetadataRepository( "OpenJDK 64-Bit Server VM",
-                "1.7.0-b147" ) ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new CannedJvmMetadataRepository( "OpenJDK 64-Bit Server VM",
+                "1.7.0-b147" ) ).checkJvmCompatibilityAndIssueWarning( bufferingLogger );
 
         assertTrue( bufferingLogger.toString().isEmpty() );
     }
@@ -81,8 +81,8 @@ public class JVMCheckerTest
     {
         BufferingLog bufferingLogger = new BufferingLog();
 
-        new JvmChecker( bufferingLogger, new CannedJvmMetadataRepository( "OpenJDK Client VM",
-                "1.7.0-b147" ) ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new CannedJvmMetadataRepository( "OpenJDK Client VM",
+                "1.7.0-b147" ) ).checkJvmCompatibilityAndIssueWarning( bufferingLogger );
 
         assertTrue( bufferingLogger.toString().isEmpty() );
     }
@@ -92,8 +92,8 @@ public class JVMCheckerTest
     {
         BufferingLog bufferingLogger = new BufferingLog();
 
-        new JvmChecker( bufferingLogger, new CannedJvmMetadataRepository( "MyOwnJDK 64-Bit Awesome VM",
-                "1.7" ) ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new CannedJvmMetadataRepository( "MyOwnJDK 64-Bit Awesome VM",
+                "1.7" ) ).checkJvmCompatibilityAndIssueWarning( bufferingLogger );
 
         assertThat( bufferingLogger.toString().trim(), is( INCOMPATIBLE_JVM_WARNING ) );
     }
@@ -103,8 +103,8 @@ public class JVMCheckerTest
     {
         BufferingLog bufferingLogger = new BufferingLog();
 
-        new JvmChecker( bufferingLogger, new CannedJvmMetadataRepository( "Java HotSpot(TM) 64-Bit Server VM",
-                "1.6.42_87" ) ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new CannedJvmMetadataRepository( "Java HotSpot(TM) 64-Bit Server VM",
+                "1.6.42_87" ) ).checkJvmCompatibilityAndIssueWarning( bufferingLogger );
 
         assertThat( bufferingLogger.toString().trim(), is( INCOMPATIBLE_JVM_VERSION_WARNING ) );
     }

@@ -143,8 +143,7 @@ public class PlatformModule
 
         life.add( dependencies.satisfyDependency( new StoreLockerLifecycleAdapter( new StoreLocker( fileSystem ), storeDir ) ));
 
-        new JvmChecker( logging.getInternalLog( JvmChecker.class ),
-                new JvmMetadataRepository() ).checkJvmCompatibilityAndIssueWarning();
+        new JvmChecker( new JvmMetadataRepository() ).checkJvmCompatibilityAndIssueWarning( logging.getInternalLog( JvmChecker.class ) );
 
         String desiredImplementationName = config.get( GraphDatabaseFacadeFactory.Configuration.tracer );
         tracers = dependencies.satisfyDependency(

@@ -1,0 +1,229 @@
+#!/usr/bin/env sh
+
+set -e
+
+SUPPORTED_JVM_WARNING="* Please use Oracle(R) Java(TM) 7 or OpenJDK(TM) to run Neo4j Server. See the Neo4j manual for installation instructions."
+
+SCRIPT_NAME=`basename -- "$0"`
+SCRIPT_DIR=`dirname -- "$0"`
+cd "$SCRIPT_DIR"
+
+DEFAULT_BASE_DIR=`cd "$SCRIPT_DIR/.." && pwd`
+
+usage() {
+  cat <<EOM
+Usage: $SCRIPT_NAME [options]
+  -b   Base directory of Neo4j install
+       [defaults to "$DEFAULT_BASE_DIR"]
+  -c   Configuration file (neo4j.conf)
+       [defaults to "$DEFAULT_BASE_DIR/conf/neo4j-wrapper.conf"]
+  -d   Detatch and run as a background daemon
+  -p   PID file
+       [defaults to "$DEFAULT_BASE_DIR/data/neo4j.pid"]
+EOM
+}
+
+BASE_DIR=
+CONFIG_FILE=
+PID_FILE=
+DAEMONIZE=
+while getopts "b:c:dhp:" argname
+do
+  case $argname in
+  b) BASE_DIR="$OPTARG";;
+  c) CONFIG_FILE="$OPTARG";;
+  d) DAEMONIZE=true;;
+  h) usage
+     exit 0
+     ;;
+  p) PID_FILE="$OPTARG";;
+  \?) usage >&2
+     exit 1
+     ;;
+  :) echo "Option -$OPTARG requires an argument" >&2
+     exit 1
+     ;;
+  esac
+done
+
+if [ -z "$BASE_DIR" ]; then
+  BASE_DIR=`cd "$SCRIPT_DIR/.." && pwd`
+fi
+
+if [ -z "$CONFIG_FILE" ]; then
+  CONFIG_FILE="$BASE_DIR/conf/neo4j.conf"
+fi
+
+LIBDIR="$BASE_DIR/lib"
+SYSLIBDIR="$BASE_DIR/system/lib"
+PLUGINDIR="$BASE_DIR/plugins"
+CONFIGDIR="$BASE_DIR/conf"
+
+detectos() {
+  DIST_OS=`uname -s | tr 'A-Z' 'a-z' | tr -d ' '`
+  case "$DIST_OS" in
+  'sunos')
+    DIST_OS="solaris"
+    ;;
+  'hp-ux' | 'hp-ux64')
+    # HP-UX needs the XPG4 version of ps (for -o args)
+    DIST_OS="hpux"
+    UNIX95=""
+    export UNIX95   
+    ;;
+  'darwin')
+    DIST_OS="macosx"
+    ;;
+  'unix_sv')
+    DIST_OS="unixware"
+    ;;
+  'os/390')
+    DIST_OS="zos"
+    ;;
+  'cygwin')
+    DIST_OS="cygwin"
+    ;;
+  esac
+}
+
+findjava() {
+  if [ "$DIST_OS" = "macosx" ]; then
+    [ -n "$JAVA_HOME" ] || JAVA_HOME=`/usr/libexec/java_home -v 1.7`
+  fi
+
+  if [ -z "$JAVA_HOME" ]; then
+    if [ -r /etc/gentoo-release ]; then
+      JAVA_HOME=`java-config --jre-home`
+    fi
+  fi
+
+  if [ "$DIST_OS" = "cygwin" ]; then
+    [ -z "$JAVA_HOME" ] || JAVA_HOME=`cygpath --unix "$JAVA_HOME"`
+    [ -z "$CLASSPATH" ] || CLASSPATH=`cygpath --path --unix "$CLASSPATH"`
+  fi
+
+  # If a specific java binary isn't specified search for the standard 'java' binary
+  if [ -z "$JAVA_CMD" ]; then
+    if [ -n "$JAVA_HOME"  ]; then
+      if [ -x "$JAVA_HOME/jre/sh/java" ]; then
+        # IBM's JDK on AIX uses strange locations for the executables
+        JAVA_CMD="$JAVA_HOME/jre/sh/java"
+      else
+        JAVA_CMD="$JAVA_HOME/bin/java"
+      fi
+    else
+      JAVA_CMD=`which java`
+    fi
+  fi
+
+  if [ ! -x "$JAVA_CMD" ]; then
+    cat <<EOM >&2
+ERROR: Unable to find java.
+* $SUPPORTED_JVM_WARNING
+EOM
+    exit 1
+  fi
+
+  JAVAVERSION=$("$JAVA_CMD" -version 2>&1 | awk -F '"' '/version/ {print $2}')
+  if [[ "$JAVAVERSION" < "1.7" ]]; then
+    cat <<EOM >&2
+ERROR: Neo4j cannot be started using java version $JAVAVERSION.
+* $SUPPORTED_JVM_WARNING
+EOM
+    exit 1
+  fi
+
+  $JAVA_CMD -version 2>&1 | egrep -q "(Java HotSpot\\(TM\\)|OpenJDK) (64-Bit Server|Server|Client) VM"
+  if [ $? -eq 1 ]; then
+    cat <<EOM >&2
+WARNING: You are using an unsupported Java runtime.
+* $SUPPORTED_JVM_WARNING
+EOM
+  fi
+}
+
+checklimits() {
+  OPEN_FILES=`ulimit -n`
+
+  if [ $OPEN_FILES -lt 40000 ]; then
+    cat <<EOM >&2
+WARNING: Max $OPEN_FILES open files allowed, minimum of 40 000 recommended. See the Neo4j manual.
+EOM
+  fi
+}
+
+load_config() {
+  eval $(awk '
+    BEGIN { FS="=" }
+    /^[[:space:]]*($|#)/ { next }
+    (NF>=2) {
+      gsub(/_[0-9]+$/, "", $1);
+      gsub(/[^A-Za-z0-9_]/, "_", $1);
+      v=""; for (i=2; i<NF; i++) v=v $i "=";
+      vars[$1]=vars[$1] v $NF " "
+    }
+    END {
+      for (k in vars) {
+        v=vars[k];
+        gsub(/\\/, "\\\\", v)
+        gsub(/"/, "\\\"", v)
+        print k "=\"" substr(v, 1, length(v)-1) "\""
+      }
+    }' < "$1")
+}
+
+set_classpath() {
+  CLASSPATH=""
+  for jar in "$LIBDIR"/*.jar "$SYSLIBDIR"/*.jar "$PLUGINDIR"/*.jar; do
+    if [ -f "$jar" ]; then
+      CLASSPATH="$CLASSPATH$jar:"
+    fi
+  done
+  CLASSPATH=`echo $CLASSPATH | sed -e 's/:$//'`:"$CONFIGDIR/"
+
+  if echo $CLASSPATH | egrep -q 'neo4j-kernel-[0-9.]{2,8}-SNAPSHOT'; then
+    echo <<EOM >&2
+WARNING: This is a development build and is not suitable for general-purpose use.
+EOM
+  fi
+}
+
+set_javaopts() {
+  JAVA_OPTS="-XX:+DisableExplicitGC ${wrapper_java_additional}"
+  [ -z "${wrapper_java_initmemory}" ] || JAVA_OPTS="$JAVA_OPTS -Xms${wrapper_java_initmemory}m"
+  [ -z "${wrapper_java_maxmemory}" ] || JAVA_OPTS="$JAVA_OPTS -Xmx${wrapper_java_maxmemory}m"
+}
+
+detectos
+findjava
+checklimits
+if [ -f "$CONFIG_DIR"/neo4j-wrapper.conf ]; then
+  load_config "$CONFIG_DIR"/neo4j-wrapper.conf
+fi
+if [ -f "$CONFIG_FILE" ]; then
+  load_config "$CONFIG_FILE"
+fi
+set_classpath
+set_javaopts
+
+NEO4J_CMD="\"$JAVA_CMD\" -cp \"$CLASSPATH\" -server $JAVA_OPTS \
+    -Dneo4j.home=\"$BASE_DIR\" -Dneo4j.instance=\"$BASE_DIR\" \
+    -Dfile.encoding=UTF-8 org.neo4j.server.Launcher"
+
+if [ -z "$DAEMONIZE" ]; then
+  exec sh -c "exec -a neo4j $NEO4J_CMD"
+else
+  [ -n "$TMPDIR" ] || TMPDIR=/tmp
+  tempdir=`mktemp -d "$TMPDIR"/neo4j.XXXXXXXX`
+  trap "rm -rf $tempdir" EXIT
+  fifo="$tempdir"/startup
+  mkfifo "$fifo"
+
+  nohup sh -c "exec -a neo4j $NEO4J_CMD" 2>&1 > "$fifo" &
+  NEO4J_PID=$!
+  trap "kill -TERM $NEO4J_PID" INT
+  if [ -n "$PID_FILE" ]; then
+    echo $NEO4J_PID > "$PID_FILE"
+  fi
+  cat < "$fifo"
+fi

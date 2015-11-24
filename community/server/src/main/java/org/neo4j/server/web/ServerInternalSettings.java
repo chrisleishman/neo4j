@@ -26,9 +26,12 @@ import org.neo4j.graphdb.config.Setting;
 
 import static java.io.File.separator;
 import static org.neo4j.helpers.Settings.BOOLEAN;
+import static org.neo4j.helpers.Settings.BYTES;
 import static org.neo4j.helpers.Settings.DURATION;
 import static org.neo4j.helpers.Settings.FALSE;
+import static org.neo4j.helpers.Settings.INTEGER;
 import static org.neo4j.helpers.Settings.NORMALIZED_RELATIVE_URI;
+import static org.neo4j.helpers.Settings.NO_DEFAULT;
 import static org.neo4j.helpers.Settings.PATH;
 import static org.neo4j.helpers.Settings.TRUE;
 import static org.neo4j.helpers.Settings.URI;
