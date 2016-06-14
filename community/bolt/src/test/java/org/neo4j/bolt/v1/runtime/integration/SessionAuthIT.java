@@ -27,6 +27,7 @@ import org.neo4j.kernel.api.exceptions.Status;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.neo4j.bolt.v1.runtime.integration.SessionMatchers.failedWith;
+import static org.neo4j.bolt.v1.runtime.integration.SessionMatchers.ignored;
 import static org.neo4j.bolt.v1.runtime.integration.SessionMatchers.recorded;
 import static org.neo4j.bolt.v1.runtime.integration.SessionMatchers.success;
 import static org.neo4j.bolt.v1.runtime.integration.SessionMatchers.successButRequiresPasswordChange;
@@ -36,6 +37,127 @@ public class SessionAuthIT
 {
     @Rule
     public TestSessions env = new TestSessions().withAuthEnabled( true );
+
+    @Test
+    public void shouldNotAllowRunBeforeInit() throws Throwable
+    {
+        Session session = env.newSession( "test" );
+        RecordingCallback recorder = new RecordingCallback();
+
+        // when
+        session.run( "RETURN 1337", map(), null, recorder );
+
+        // then
+        assertThat( recorder, recorded(
+                failedWith( Status.Security.Forbidden )
+        ));
+    }
+
+    @Test
+    public void shouldNotAllowRunAfterReset() throws Throwable
+    {
+        Session session = env.newSession( "test" );
+        RecordingCallback recorder = new RecordingCallback();
+
+        // when
+        session.reset( null, recorder );
+        session.run( "RETURN 1337", map(), null, recorder );
+
+        // then
+        assertThat( recorder, recorded(
+                success(),
+                failedWith( Status.Security.Forbidden )
+        ));
+    }
+
+    @Test
+    public void shouldNotAllowRunAfterInitFailureAndAck() throws Throwable
+    {
+        Session session = env.newSession( "test" );
+        RecordingCallback recorder = new RecordingCallback();
+
+        // given
+        session.init( "TestClient/1.0.0", map(
+                "scheme", "basic",
+                "principal", "neo4j",
+                "credentials", "j4oen" ),
+                null, recorder );
+        session.run( "RETURN 1337", map(), null, recorder );
+        assertThat( recorder, recorded(
+                failedWith( Status.Security.Unauthorized ),
+                ignored()
+        ));
+
+        // when
+        RecordingCallback afterInitRecorder = new RecordingCallback();
+        session.ackFailure( null, afterInitRecorder );
+        session.run( "RETURN 1337", map(), null, afterInitRecorder );
+
+        // then
+        assertThat( afterInitRecorder, recorded(
+                success(),
+                failedWith( Status.Security.Forbidden )
+        ));
+    }
+
+    @Test
+    public void shouldNotAllowRunAfterInitFailureAndReset() throws Throwable
+    {
+        Session session = env.newSession( "test" );
+        RecordingCallback recorder = new RecordingCallback();
+
+        // given
+        session.init( "TestClient/1.0.0", map(
+                "scheme", "basic",
+                "principal", "neo4j",
+                "credentials", "j4oen" ),
+                null, recorder );
+        session.run( "RETURN 1337", map(), null, recorder );
+        assertThat( recorder, recorded(
+                failedWith( Status.Security.Unauthorized ),
+                ignored()
+        ));
+
+        // when
+        RecordingCallback afterInitRecorder = new RecordingCallback();
+        session.reset( null, afterInitRecorder );
+        session.run( "RETURN 1337", map(), null, afterInitRecorder );
+
+        // then
+        assertThat( afterInitRecorder, recorded(
+                success(),
+                failedWith( Status.Security.Forbidden )
+        ));
+    }
+
+    @Test
+    public void shouldAllowInitReattemptAfterAckingFailure() throws Throwable
+    {
+        Session session = env.newSession( "test" );
+        RecordingCallback recorder = new RecordingCallback();
+
+        // when
+        session.init( "TestClient/1.0.0", map(
+                "scheme", "basic",
+                "principal", "neo4j",
+                "credentials", "j4oen" ),
+                null, recorder );
+        session.ackFailure( null, recorder );
+        session.init( "TestClient/1.0.0", map(
+                "scheme", "basic",
+                "principal", "neo4j",
+                "credentials", "neo4j" ),
+                null, recorder );
+        session.run( "RETURN 1337", map(), null, recorder );
+
+        // then
+        assertThat( recorder, recorded(
+                failedWith( Status.Security.Unauthorized ),
+                success(),
+                success(),
+                success()
+        ));
+    }
 
     @Test
     public void shouldGiveCredentialsExpiredStatusOnExpiredCredentials() throws Throwable

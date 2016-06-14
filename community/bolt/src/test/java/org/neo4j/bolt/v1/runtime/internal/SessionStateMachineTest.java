@@ -29,15 +29,9 @@ import org.neo4j.bolt.security.auth.AuthenticationException;
 import org.neo4j.bolt.security.auth.BasicAuthenticationResult;
 import org.neo4j.bolt.v1.runtime.Session;
 import org.neo4j.bolt.v1.runtime.spi.RecordStream;
-import org.neo4j.bolt.v1.runtime.spi.StatementRunner;
 import org.neo4j.kernel.api.KernelTransaction;
 import org.neo4j.kernel.api.exceptions.Status;
 import org.neo4j.kernel.api.security.AccessMode;
-import org.neo4j.kernel.impl.core.ThreadToStatementContextBridge;
-import org.neo4j.kernel.impl.coreapi.TopLevelTransaction;
-import org.neo4j.kernel.impl.factory.GraphDatabaseFacade;
-import org.neo4j.kernel.impl.util.JobScheduler;
-import org.neo4j.udc.UsageData;
 
 import static java.util.Collections.emptyMap;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -63,6 +57,82 @@ public class SessionStateMachineTest
     public void initialStateShouldBeUninitalized()
     {
         // When & Then
+        assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.UNINITIALIZED ) );
+    }
+
+    @Test
+    public void shouldMoveToInitErrorAfterFailedInit() throws Throwable
+    {
+        // Given
+        when( spi.authenticate( anyMap() ) )
+                .thenThrow( new AuthenticationException( Status.Security.Unauthorized, "Mock failure" ) );
+
+        // When
+        machine.init( "FunClient/1.2", emptyMap(), null, noOp() );
+
+        // Then
+        assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.INIT_ERROR ) );
+    }
+
+    @Test
+    public void shouldMoveToInitErrorAfterAckInInit() throws Throwable
+    {
+        // When
+        machine.ackFailure( null, noOp() );
+
+        // Then
+        assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.INIT_ERROR ) );
+    }
+
+    @Test
+    public void shouldMoveToInitErrorAfterRunInInit() throws Throwable
+    {
+        // When
+        machine.run( "Hello, world!", emptyMap(), null, noOp() );
+
+        // Then
+        assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.INIT_ERROR ) );
+    }
+
+    @Test
+    public void shouldMoveToUninitializedAfterAckFromInitError() throws Throwable
+    {
+        // Given
+        when( spi.authenticate( anyMap() ) )
+                .thenThrow( new AuthenticationException( Status.Security.Unauthorized, "Mock failure" ) );
+        machine.init( "FunClient/1.2", emptyMap(), null, noOp() );
+
+        // When
+        machine.ackFailure( null, noOp() );
+
+        // Then
+        assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.UNINITIALIZED ) );
+    }
+
+    @Test
+    public void shouldRemainInUninitializedAfterReset() throws Throwable
+    {
+        // When
+        TestCallback callback = new TestCallback();
+        machine.reset( null, callback );
+
+        // Then
+        assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.UNINITIALIZED ) );
+        assertThat( callback.completedCount, equalTo( 1 ) );
+    }
+
+    @Test
+    public void shouldMoveToUninitializedAfterResetFromInitError() throws Throwable
+    {
+        // Given
+        when( spi.authenticate( anyMap() ) )
+                .thenThrow( new AuthenticationException( Status.Security.Unauthorized, "Mock failure" ) );
+        machine.init( "FunClient/1.2", emptyMap(), null, noOp() );
+
+        // When
+        machine.reset( null, noOp() );
+
+        // Then
         assertThat( machine.state(), CoreMatchers.equalTo( SessionStateMachine.State.UNINITIALIZED ) );
     }
 

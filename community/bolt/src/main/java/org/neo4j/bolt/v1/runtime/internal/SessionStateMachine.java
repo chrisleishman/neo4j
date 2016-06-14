@@ -84,7 +84,7 @@ public class SessionStateMachine implements Session, SessionState
                         }
                         catch ( AuthenticationException e )
                         {
-                            return error( ctx, new Neo4jError( e.status(), e.getMessage(), e ) );
+                            return error( ctx, new Neo4jError( e.status(), e.getMessage(), e ), INIT_ERROR );
                         }
                         catch ( Throwable e )
                         {
@@ -93,11 +93,79 @@ public class SessionStateMachine implements Session, SessionState
                     }
 
                     @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        reset( ctx );
+                        return INIT_INTERRUPTED;
+                    }
+
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return UNINITIALIZED;
+                    }
+
+                    @Override
                     protected State onNoImplementation( SessionStateMachine ctx, String command )
                     {
-                        ctx.error( new Neo4jError( Status.Request.Invalid, "No operations allowed until you send an " +
-                                "INIT message." ) );
-                        return halt( ctx );
+                        return error( ctx, new Neo4jError( Status.Security.Forbidden, "No operations allowed until you send a " +
+                                "successful INIT message." ), INIT_ERROR );
+                    }
+                },
+
+        /** An error has occurred during initialization. Client must acknowledge it before continuing. */
+        INIT_ERROR
+                {
+                    @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        reset( ctx );
+                        return INIT_INTERRUPTED;
+                    }
+
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return UNINITIALIZED;
+                    }
+
+                    @Override
+                    public State ackFailure( SessionStateMachine ctx )
+                    {
+                        return UNINITIALIZED;
+                    }
+
+                    @Override
+                    protected State onNoImplementation( SessionStateMachine ctx, String command )
+                    {
+                        ctx.ignored();
+                        return INIT_ERROR;
+                    }
+                },
+
+        INIT_INTERRUPTED
+                {
+                    @Override
+                    public State interrupt( SessionStateMachine ctx )
+                    {
+                        return INIT_INTERRUPTED;
+                    }
+
+                    /**
+                     * When we are in the interrupted state, we need RESET messages
+                     * to clear that state.
+                     */
+                    @Override
+                    public State reset( SessionStateMachine ctx )
+                    {
+                        return reset(ctx, UNINITIALIZED);
+                    }
+
+                    @Override
+                    protected State onNoImplementation( SessionStateMachine ctx, String command )
+                    {
+                        ctx.ignored();
+                        return INIT_INTERRUPTED;
                     }
                 },
 
@@ -158,7 +226,7 @@ public class SessionStateMachine implements Session, SessionState
                     public State rollbackTransaction( SessionStateMachine ctx )
                     {
                         return error( ctx, new Neo4jError( Status.Request.Invalid,
-                                "rollback cannot be done when there is no open transaction in the session." ) );
+                                "rollback cannot be done when there is no open transaction in the session." ), ERROR );
                     }
                 },
 
@@ -325,22 +393,8 @@ public class SessionStateMachine implements Session, SessionState
                     @Override
                     public State reset( SessionStateMachine ctx )
                     {
-                        // If > 0 to guard against bugs making the counter negative
-                        if( ctx.interruptCounter.get() > 0 )
-                        {
-                            if( ctx.interruptCounter.decrementAndGet() > 0 )
-                            {
-                                // This happens when the user sends multiple
-                                // interrupts at the same time, we now demand
-                                // an equivalent number of RESET until we go back
-                                // to IDLE.
-                                ctx.ignored();
-                                return INTERRUPTED;
-                            }
-                        }
-                        return IDLE;
+                        return reset(ctx, IDLE);
                     }
-
 
                     @Override
                     public State interrupt( SessionStateMachine ctx )
@@ -420,6 +474,24 @@ public class SessionStateMachine implements Session, SessionState
             return onNoImplementation( ctx, "resetting the current session" );
         }
 
+        public State reset( SessionStateMachine ctx, State outcome )
+        {
+            // If > 0 to guard against bugs making the counter negative
+            if( ctx.interruptCounter.get() > 0 )
+            {
+                if( ctx.interruptCounter.decrementAndGet() > 0 )
+                {
+                    // This happens when the user sends multiple
+                    // interrupts at the same time, we now demand
+                    // an equivalent number of RESET until we go back
+                    // to IDLE.
+                    ctx.ignored();
+                    return ctx.state;
+                }
+            }
+            return outcome;
+        }
+
         public State ackFailure( SessionStateMachine ctx )
         {
             return onNoImplementation( ctx, "acknowledging a failure" );
@@ -440,7 +512,7 @@ public class SessionStateMachine implements Session, SessionState
         protected State onNoImplementation( SessionStateMachine ctx, String command )
         {
             String msg = "'" + command + "' cannot be done when a session is in the '" + ctx.state.name() + "' state.";
-            return error( ctx, new Neo4jError( Status.Request.Invalid, msg ) );
+            return error( ctx, new Neo4jError( Status.Request.Invalid, msg ), ERROR );
         }
 
         public State halt( SessionStateMachine ctx )
@@ -476,15 +548,14 @@ public class SessionStateMachine implements Session, SessionState
                         "If you are connecting via a shell or programmatically via a driver, " +
                         "just issue a `CALL dbms.changePassword('new password')` statement in the current " +
                         "session, and then restart your driver with the new password configured."),
-                        err ) );
+                        err ), ERROR );
             }
-            return error( ctx, Neo4jError.from( err ) );
+            return error( ctx, Neo4jError.from( err ), ERROR );
         }
 
-        State error( SessionStateMachine ctx, Neo4jError err )
+        State error( SessionStateMachine ctx, Neo4jError err, State outcome )
         {
             ctx.spi.reportError( err );
-            State outcome = ERROR;
             if ( ctx.hasTransaction() )
             {
                 switch( ctx.currentTransaction.transactionType() )
